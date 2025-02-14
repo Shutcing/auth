@@ -153,8 +153,14 @@
     </div>
 
     <!-- Подключение библиотеки Puter KV -->
-    <script src="https://js.puter.com/v2/"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
+      // Инициализация Supabase
+      const supabaseUrl = "https://lcfceqmjjvzvwhdttuii.supabase.co";
+      const supabaseKey =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjZmNlcW1qanZ6dndoZHR0dWlpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk1NDQ1OTUsImV4cCI6MjA1NTEyMDU5NX0.2WnN1GVQTO1yPP3Dgkx5sI2xIEmmy6cKe2tbD2v2gzk";
+      const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
       // Пользовательский режим
       const userContainer = document.getElementById("userContainer");
       const loginForm = document.getElementById("loginForm");
@@ -189,15 +195,35 @@
       const logoutAdminBtn = document.getElementById("logoutAdminBtn");
       const adminMessage = document.getElementById("adminMessage");
 
-      // Функция для получения данных пользователя из Puter KV
       async function getUserData(username) {
-        const value = await puter.kv.get("user:" + username);
-        return value ? JSON.parse(value) : null;
+        const { data, error } = await supabase
+          .from("users")
+          .select()
+          .eq("username", username)
+          .single();
+
+        return error ? null : data;
       }
 
-      // Функция для установки данных пользователя в Puter KV
-      async function setUserData(username, data) {
-        return await puter.kv.set("user:" + username, JSON.stringify(data));
+      async function createUser(userData) {
+        const { data, error } = await supabase
+          .from("users")
+          .insert(userData)
+          .select()
+          .single();
+
+        return { data, error };
+      }
+
+      async function updateUser(username, updates) {
+        const { data, error } = await supabase
+          .from("users")
+          .update(updates)
+          .eq("username", username)
+          .select()
+          .single();
+
+        return { data, error };
       }
 
       // Обработчик пользовательского входа
@@ -206,6 +232,7 @@
         const username = usernameInput.value.trim();
         const password = userPasswordInput.value;
         messageDiv.textContent = "Проверка...";
+
         try {
           const userData = await getUserData(username);
           if (!userData) {
@@ -216,12 +243,11 @@
             messageDiv.textContent = "Доступ для этого пользователя отключен.";
           } else if (password === userData.password) {
             messageDiv.textContent = "Авторизация успешна!";
-            // Здесь можно добавить логику перехода к защищённому контенту
           } else {
             messageDiv.textContent = "Неверный пароль.";
           }
         } catch (err) {
-          console.error("Ошибка при получении данных:", err);
+          console.error("Ошибка:", err);
           messageDiv.textContent = "Ошибка при проверке пользователя.";
         }
       });
@@ -258,28 +284,32 @@
         e.preventDefault();
         const newUsername = newUsernameInput.value.trim();
         const newPassword = newUserPasswordInput.value;
-        const created = new Date().toISOString();
+
         const userData = {
           username: newUsername,
           password: newPassword,
-          created: created,
+          created_at: new Date().toISOString(),
           active: true,
         };
-        try {
-          await setUserData(newUsername, userData);
-          adminMessage.textContent = "Новый пользователь успешно добавлен!";
-          newUsernameInput.value = "";
-          newUserPasswordInput.value = "";
-        } catch (err) {
-          console.error("Ошибка при добавлении пользователя:", err);
+
+        const { error } = await createUser(userData);
+
+        if (error) {
+          console.error("Ошибка:", error);
           adminMessage.textContent = "Ошибка при добавлении пользователя.";
+          return;
         }
+
+        adminMessage.textContent = "Новый пользователь успешно добавлен!";
+        newUsernameInput.value = "";
+        newUserPasswordInput.value = "";
       });
 
       // Обработчик загрузки данных пользователя для редактирования
       loadUserBtn.addEventListener("click", async () => {
         const usernameToEdit = editUsernameInput.value.trim();
         if (!usernameToEdit) return;
+
         try {
           const userData = await getUserData(usernameToEdit);
           if (!userData) {
@@ -287,48 +317,42 @@
             editFieldsDiv.classList.add("hidden");
             return;
           }
-          // Заполняем поля для редактирования
+
           editUserPasswordInput.value = userData.password;
-          editUserCreatedInput.value = userData.created.substring(0, 10);
+          editUserCreatedInput.value = userData.created_at.substring(0, 10);
           editUserActiveInput.checked = userData.active;
           editFieldsDiv.classList.remove("hidden");
           adminMessage.textContent = "";
         } catch (err) {
-          console.error("Ошибка при загрузке данных:", err);
+          console.error("Ошибка:", err);
           adminMessage.textContent = "Ошибка при загрузке данных.";
         }
       });
 
-      // Обработчик сохранения изменений в учетной записи
+      // Обработчик сохранения изменений
       editUserForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const usernameToEdit = editUsernameInput.value.trim();
-        try {
-          const userData = await getUserData(usernameToEdit);
-          if (!userData) {
-            adminMessage.textContent = "Пользователь не найден.";
-            return;
-          }
-          const updatedPassword =
-            editUserPasswordInput.value || userData.password;
-          const updatedUserData = {
-            username: usernameToEdit,
-            password: updatedPassword,
-            created: userData.created, // дата создания сохраняется
-            active: editUserActiveInput.checked,
-          };
-          await setUserData(usernameToEdit, updatedUserData);
-          adminMessage.textContent = "Пользователь успешно обновлён!";
-          // Очистка полей редактирования
-          editUsernameInput.value = "";
-          editUserPasswordInput.value = "";
-          editUserCreatedInput.value = "";
-          editUserActiveInput.checked = true;
-          editFieldsDiv.classList.add("hidden");
-        } catch (err) {
-          console.error("Ошибка при обновлении данных:", err);
+        const updates = {
+          password: editUserPasswordInput.value || undefined,
+          active: editUserActiveInput.checked,
+          created_at: editUserCreatedInput.value,
+        };
+
+        const { error } = await updateUser(usernameToEdit, updates);
+
+        if (error) {
+          console.error("Ошибка:", error);
           adminMessage.textContent = "Ошибка при обновлении пользователя.";
+          return;
         }
+
+        adminMessage.textContent = "Пользователь успешно обновлён!";
+        editUsernameInput.value = "";
+        editUserPasswordInput.value = "";
+        editUserCreatedInput.value = "";
+        editUserActiveInput.checked = true;
+        editFieldsDiv.classList.add("hidden");
       });
 
       // Выход из админ-панели
