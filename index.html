@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Авторизация и админ-панель</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f0f0f0;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+      }
+      .container {
+        background-color: #fff;
+        padding: 20px 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        width: 320px;
+        text-align: center;
+        margin: 10px;
+      }
+      input[type="text"],
+      input[type="password"],
+      input[type="date"] {
+        width: 100%;
+        padding: 8px;
+        margin: 8px 0;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      button {
+        padding: 10px 20px;
+        background-color: #4285f4;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 5px;
+      }
+      button:hover {
+        background-color: #357ae8;
+      }
+      .hidden {
+        display: none;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+      }
+      th,
+      td {
+        padding: 8px;
+        border: 1px solid #ccc;
+        text-align: left;
+        font-size: 0.9em;
+      }
+      #message,
+      #adminMessage {
+        margin-top: 15px;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Пользовательский режим -->
+    <div class="container" id="userContainer">
+      <h2>Вход пользователя</h2>
+      <form id="loginForm">
+        <input
+          type="text"
+          id="username"
+          placeholder="Имя пользователя"
+          required
+        />
+        <input
+          type="password"
+          id="userPassword"
+          placeholder="Пароль"
+          required
+        />
+        <button type="submit">Войти</button>
+      </form>
+      <button id="adminLoginBtn">Admin Login</button>
+      <div id="message"></div>
+    </div>
+
+    <!-- Форма входа в админ-режим -->
+    <div class="container hidden" id="adminLoginContainer">
+      <h2>Вход администратора</h2>
+      <form id="adminLoginForm">
+        <input
+          type="password"
+          id="adminPassword"
+          placeholder="Введите админ-пароль"
+          required
+        />
+        <button type="submit">Войти</button>
+      </form>
+      <button id="backToUserBtn">Назад</button>
+      <div id="adminLoginMessage"></div>
+    </div>
+
+    <!-- Админ-панель -->
+    <div class="container hidden" id="adminPanel">
+      <h2>Админ-панель</h2>
+      <!-- Форма добавления нового пользователя -->
+      <h3>Добавить пользователя</h3>
+      <form id="addUserForm">
+        <input
+          type="text"
+          id="newUsername"
+          placeholder="Имя пользователя"
+          required
+        />
+        <input
+          type="password"
+          id="newUserPassword"
+          placeholder="Пароль"
+          required
+        />
+        <button type="submit">Добавить</button>
+      </form>
+      <hr />
+      <!-- Форма редактирования пользователя -->
+      <h3>Редактировать пользователя</h3>
+      <form id="editUserForm">
+        <input
+          type="text"
+          id="editUsername"
+          placeholder="Имя пользователя"
+          required
+        />
+        <button type="button" id="loadUserBtn">Загрузить данные</button>
+        <div id="editFields" class="hidden">
+          <input
+            type="password"
+            id="editUserPassword"
+            placeholder="Новый пароль (если нужно)"
+          />
+          <input type="date" id="editUserCreated" readonly />
+          <label>
+            <input type="checkbox" id="editUserActive" checked /> Доступ активен
+          </label>
+          <button type="submit">Сохранить изменения</button>
+        </div>
+      </form>
+      <button id="logoutAdminBtn">Выйти из админ-режима</button>
+      <div id="adminMessage"></div>
+    </div>
+
+    <!-- Подключение библиотеки Puter KV -->
+    <script src="https://js.puter.com/v2/"></script>
+    <script>
+      // Пользовательский режим
+      const userContainer = document.getElementById("userContainer");
+      const loginForm = document.getElementById("loginForm");
+      const usernameInput = document.getElementById("username");
+      const userPasswordInput = document.getElementById("userPassword");
+      const messageDiv = document.getElementById("message");
+      const adminLoginBtn = document.getElementById("adminLoginBtn");
+
+      // Админ-режим
+      const adminLoginContainer = document.getElementById(
+        "adminLoginContainer"
+      );
+      const adminLoginForm = document.getElementById("adminLoginForm");
+      const adminPasswordInput = document.getElementById("adminPassword");
+      const adminLoginMessage = document.getElementById("adminLoginMessage");
+      const backToUserBtn = document.getElementById("backToUserBtn");
+
+      // Админ-панель
+      const adminPanel = document.getElementById("adminPanel");
+      const addUserForm = document.getElementById("addUserForm");
+      const newUsernameInput = document.getElementById("newUsername");
+      const newUserPasswordInput = document.getElementById("newUserPassword");
+
+      const editUserForm = document.getElementById("editUserForm");
+      const editUsernameInput = document.getElementById("editUsername");
+      const loadUserBtn = document.getElementById("loadUserBtn");
+      const editFieldsDiv = document.getElementById("editFields");
+      const editUserPasswordInput = document.getElementById("editUserPassword");
+      const editUserCreatedInput = document.getElementById("editUserCreated");
+      const editUserActiveInput = document.getElementById("editUserActive");
+
+      const logoutAdminBtn = document.getElementById("logoutAdminBtn");
+      const adminMessage = document.getElementById("adminMessage");
+
+      // Функция для получения данных пользователя из Puter KV
+      async function getUserData(username) {
+        const value = await puter.kv.get("user:" + username);
+        return value ? JSON.parse(value) : null;
+      }
+
+      // Функция для установки данных пользователя в Puter KV
+      async function setUserData(username, data) {
+        return await puter.kv.set("user:" + username, JSON.stringify(data));
+      }
+
+      // Обработчик пользовательского входа
+      loginForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const username = usernameInput.value.trim();
+        const password = userPasswordInput.value;
+        messageDiv.textContent = "Проверка...";
+        try {
+          const userData = await getUserData(username);
+          if (!userData) {
+            messageDiv.textContent = "Пользователь не найден.";
+            return;
+          }
+          if (!userData.active) {
+            messageDiv.textContent = "Доступ для этого пользователя отключен.";
+          } else if (password === userData.password) {
+            messageDiv.textContent = "Авторизация успешна!";
+            // Здесь можно добавить логику перехода к защищённому контенту
+          } else {
+            messageDiv.textContent = "Неверный пароль.";
+          }
+        } catch (err) {
+          console.error("Ошибка при получении данных:", err);
+          messageDiv.textContent = "Ошибка при проверке пользователя.";
+        }
+      });
+
+      // Переход в режим входа администратора
+      adminLoginBtn.addEventListener("click", () => {
+        userContainer.classList.add("hidden");
+        adminLoginContainer.classList.remove("hidden");
+        adminLoginMessage.textContent = "";
+        adminPasswordInput.value = "";
+      });
+
+      // Обработчик входа администратора
+      adminLoginForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const adminPass = adminPasswordInput.value;
+        if (adminPass === "041007") {
+          adminLoginMessage.textContent = "Успешный вход в админ-режим!";
+          adminLoginContainer.classList.add("hidden");
+          adminPanel.classList.remove("hidden");
+        } else {
+          adminLoginMessage.textContent = "Неверный админ-пароль.";
+        }
+      });
+
+      // Кнопка "Назад" в админ-режиме
+      backToUserBtn.addEventListener("click", () => {
+        adminLoginContainer.classList.add("hidden");
+        userContainer.classList.remove("hidden");
+      });
+
+      // Обработчик добавления нового пользователя
+      addUserForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const newUsername = newUsernameInput.value.trim();
+        const newPassword = newUserPasswordInput.value;
+        const created = new Date().toISOString();
+        const userData = {
+          username: newUsername,
+          password: newPassword,
+          created: created,
+          active: true,
+        };
+        try {
+          await setUserData(newUsername, userData);
+          adminMessage.textContent = "Новый пользователь успешно добавлен!";
+          newUsernameInput.value = "";
+          newUserPasswordInput.value = "";
+        } catch (err) {
+          console.error("Ошибка при добавлении пользователя:", err);
+          adminMessage.textContent = "Ошибка при добавлении пользователя.";
+        }
+      });
+
+      // Обработчик загрузки данных пользователя для редактирования
+      loadUserBtn.addEventListener("click", async () => {
+        const usernameToEdit = editUsernameInput.value.trim();
+        if (!usernameToEdit) return;
+        try {
+          const userData = await getUserData(usernameToEdit);
+          if (!userData) {
+            adminMessage.textContent = "Пользователь не найден.";
+            editFieldsDiv.classList.add("hidden");
+            return;
+          }
+          // Заполняем поля для редактирования
+          editUserPasswordInput.value = userData.password;
+          editUserCreatedInput.value = userData.created.substring(0, 10);
+          editUserActiveInput.checked = userData.active;
+          editFieldsDiv.classList.remove("hidden");
+          adminMessage.textContent = "";
+        } catch (err) {
+          console.error("Ошибка при загрузке данных:", err);
+          adminMessage.textContent = "Ошибка при загрузке данных.";
+        }
+      });
+
+      // Обработчик сохранения изменений в учетной записи
+      editUserForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const usernameToEdit = editUsernameInput.value.trim();
+        try {
+          const userData = await getUserData(usernameToEdit);
+          if (!userData) {
+            adminMessage.textContent = "Пользователь не найден.";
+            return;
+          }
+          const updatedPassword =
+            editUserPasswordInput.value || userData.password;
+          const updatedUserData = {
+            username: usernameToEdit,
+            password: updatedPassword,
+            created: userData.created, // дата создания сохраняется
+            active: editUserActiveInput.checked,
+          };
+          await setUserData(usernameToEdit, updatedUserData);
+          adminMessage.textContent = "Пользователь успешно обновлён!";
+          // Очистка полей редактирования
+          editUsernameInput.value = "";
+          editUserPasswordInput.value = "";
+          editUserCreatedInput.value = "";
+          editUserActiveInput.checked = true;
+          editFieldsDiv.classList.add("hidden");
+        } catch (err) {
+          console.error("Ошибка при обновлении данных:", err);
+          adminMessage.textContent = "Ошибка при обновлении пользователя.";
+        }
+      });
+
+      // Выход из админ-панели
+      logoutAdminBtn.addEventListener("click", () => {
+        adminPanel.classList.add("hidden");
+        userContainer.classList.remove("hidden");
+      });
+    </script>
+  </body>
+</html>
